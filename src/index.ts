@@ -1,72 +1,87 @@
-import { fetchProductCatalog, fetchProductReviews, fetchSalesReport,
-    type Product, type Review, type SalesReport } from './apiSimulator';
-import { NetworkError, DataError } from './errors';
+import { fetchProductCatalog, fetchProductReviews, fetchSalesReport } from './apiSimulator';
 
-const app = document.querySelector<HTMLDivElement>("#app")!;
-const write = (s ="") => (app.innerText =+ s + "\n");
-const title = (s: string) => write(`\n=== ${s} ===\n`);
+const $app = document.querySelector<HTMLDivElement>('#app')!;
+const $catalogBtn = document.querySelector<HTMLButtonElement>('#btn-catalog')!;
+const $reviewsBtn = document.querySelector<HTMLButtonElement>('#btn-reviews')!;
+const $salesBtn = document.querySelector<HTMLButtonElement>('#btn-sales')!;
+const $clearBtn = document.querySelector<HTMLButtonElement>('#btn-clear')!;
+const $select = document.querySelector<HTMLSelectElement>('#product-select')!;
 
-const printProducts = (products: Product[]) => {
-    title("Product Catalog");
-    products.forEach((p) => write(` - [${p.id}] ${p.name}: $${p.price}`));
+const write = (s = '') => {
+  $app.innerText = ($app.innerText ? $app.innerText + '\n' : '') + s;
 };
 
-const printReviews = (productId: number, reviews: Review[]) => {
-    write (`\nReviews for product ${productId}:`);
-    if (!reviews.length) write("  (No reviews)");
-    else reviews.forEach((r) => write(` ★${r.rating} - ${r.comment}`));
-    };
-    
-const printSalesReport = (report: SalesReport) => {
-    title("Sales Report");
-    write(`Total Sales: $${report.totalSales}`);
-    write(`Units Sold: ${report.unitsSold}`);
-    write(`Average Price: $${report.averagePrice}`);
+const setLoading = (el: HTMLButtonElement, on = true) => {
+  el.disabled = on;
 };
 
-const handleError = (error: unknown) => {
-    if (error instanceof NetworkError) write(`[DATA ERROR] ${error.message}`);
-    else if (error instanceof DataError) write(`[NETWORK ERROR] ${error.message}`);
-    else if (error instanceof Error) write(`[ERROR] ${error.message}`);
-    else write(`[UNKNOWN ERROR] ${String(error)}`);
-};
+  async function loadCatalog() {
+    setLoading($catalogBtn, true);
+    try {
+  write('\n=== Fetching product catalog ===');
+      const products = await fetchProductCatalog();
+      write(`Loaded ${products.length} products:`);
+      // populate select
+      $select.innerHTML = '<option value="">(choose a product)</option>';
+      products.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = String(p.id);
+        opt.textContent = `[#${p.id}] ${p.name} — $${p.price}`;
+        $select.appendChild(opt);
+      });
+    } catch (err) {
+      if (err instanceof Error) write(`[ERROR] ${err.message}`);
+      else write(`[ERROR] ${String(err)}`);
+    } finally {
+      setLoading($catalogBtn, false);
+    }
+  }
 
-const run = () => {
-    let productsCache: Product[] = [];
+  async function loadReviews() {
+    const pid = Number($select.value);
+    if (!pid) {
+      write('Please select a product first.');
+      return;
+    }
+    setLoading($reviewsBtn, true);
+    try {
+  write(`\n=== Fetching reviews for product ${pid} ===`);
+      const reviews = await fetchProductReviews(pid);
+      if (!reviews.length) write('  (no reviews)');
+      else reviews.forEach(r => write(` ★${r.rating} — ${r.comment}`));
+    } catch (err) {
+      if (err instanceof Error) write(`[ERROR] ${err.message}`);
+      else write(`[ERROR] ${String(err)}`);
+    } finally {
+      setLoading($reviewsBtn, false);
+    }
+  }
+  
+ async function loadSales() {
+    setLoading($salesBtn, true);
+    try {
+  write('\n=== Fetching sales report ===');
+      const report = await fetchSalesReport();
+      write(`Total: $${report.totalSales}`);
+      write(`Units sold: ${report.unitsSold}`);
+      write(`Average: $${report.averagePrice}`);
+    } catch (err) {
+      if (err instanceof Error) write(`[ERROR] ${err.message}`);
+      else write(`[ERROR] ${String(err)}`);
+    } finally {
+      setLoading($salesBtn, false);
+    }
+  }
 
-    fetchProductCatalog()
-        .then((products) => {
-        printProducts(products);
-        return products;
-         })
-        .catch((err) => {
-          handleError(err);
-          return [] as Product[]; 
-        })
-        .then((products) => {
-            if (!products.length) {
-                write("\nSkipping reviews: no products available.");
-                return[];
-            }
-        const reviewPromises = products.map((p) =>
-            fetchProductReviews(p.id)
-                .then((reviews) => ({ productId: p.id, reviews }))
-                .catch((err) => {
-                    handleError(err);
-                    return { productId: p.id, reviews: [] as Review[] };
-                     })
-        );
-        return Promise.all(reviewPromises);
-    })
-   .then((results) =>{
-        results.forEach((r) => printReviews(r.productId, r.reviews));
-   })
-    .then(() => 
-       fetchSalesReport()
-        .then((report) => printSalesReport(report))
-        .catch((err) => handleError(err))
-)
-    .finally(() => write("\nAll API calls have been attempted."));
-};
+$catalogBtn.addEventListener('click', loadCatalog);
+$reviewsBtn.addEventListener('click', loadReviews);
+$salesBtn.addEventListener('click', loadSales);
+$clearBtn.addEventListener('click', () => { $app.innerText = ''; $select.innerHTML = '<option value=\"\">(load catalog first)</option>'; });
 
+  //
+async function run() {
+  write('API Simulator started. Use the buttons to interact.');
+}
+
+// start
 run();
